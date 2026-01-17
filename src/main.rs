@@ -1,8 +1,8 @@
+// http://127.0.0.1:8080/?(title:%22Prochains%20bus%22,max_ahead:14400,lines:[(id:%2251%22,label:Some(%22Est%22),stop_id:%2251167%22,chateau_id:%22soci%C3%A9t%C3%A9~de~transport~de~montr%C3%A9al%22,color:Some(%22%23ffffff%22),background_color:Some(%22%2322bbff%22),priority:0)])
 use std::time::Duration;
 
 use chrono::{DateTime, Local, TimeDelta, Utc};
 use futures::future::join_all;
-
 
 use dioxus::{core::anyhow, document::Link, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -169,7 +169,6 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-
     rsx! {
         Link { rel: "stylesheet", href: MAIN_CSS }
         Router::<Route> {}
@@ -238,14 +237,11 @@ fn LineDisplay(line: LineStatus, time: Signal<DateTime<Utc>>) -> Element {
     rsx! {
         div {
             class: "line",
-            div {
-                class: "line-number-container",
-                color: line.settings.background_color,
-                span {
-                    class: "line-number",
-                    color: line.settings.color,
-                    { line.settings.id }
-                }
+            span {
+                class: "line-number",
+                color: line.settings.color,
+                background_color: line.settings.background_color,
+                { line.settings.id }
             }
             if let Some(label) = line.settings.label {
                 span {
