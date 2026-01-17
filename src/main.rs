@@ -1,14 +1,5 @@
 use dioxus::prelude::*;
-
-#[derive(Debug, Clone, Routable, PartialEq)]
-#[rustfmt::skip]
-enum Route {
-    #[layout(Navbar)]
-    #[route("/")]
-    Home {},
-    #[route("/blog/:id")]
-    Blog { id: i32 },
-}
+use serde::{Deserialize, Serialize};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -20,81 +11,55 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-    rsx! {
-        document::Link { rel: "icon", href: FAVICON }
-        document::Link { rel: "stylesheet", href: MAIN_CSS }
-        Router::<Route> {}
-    }
+    rsx! { Router::<Route> {} }
+}
+
+#[derive(Debug, Clone, Routable, PartialEq)]
+enum Route {
+    #[route("/:.._path")]
+    Schedule { _path: Vec<String> },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Settings {
+    title: String,
+    max_ahead: u64,
+    lines: Vec<LineSettings>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct LineSettings {
+    id: String,
+    stop_id: String,
+    color: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct ApiStopStatus {
+    events: Vec<ApiTripStatus>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct ApiTripStatus {
+    scheduled_departure: i64,
+    realtime_departure: 
+}
+
+async fn fetch_stop_status(
+    stop_id: String,
+    chateau_id: String,
+) -> Result<ApiStopStatus, reqwest::Error> {
+    let url = format!("https://birchdeparturesfromstop.catenarymaps.org/departures_at_stop?stop_id={stop_id}&chateau_id={chateau_id}&include_shapes=false");
+    reqwest::get(&url).await?.json().await
 }
 
 #[component]
-pub fn Hero() -> Element {
+fn Schedule(_path: Vec<String>) -> Element {
+    let encoded = use_route::<Route>().to_string();
+    let trimmed = encoded.strip_prefix('/').unwrap_or(&encoded);
+    let settings: Settings = ron::from_str(trimmed)?;
     rsx! {
-        div {
-            id: "hero",
-            img { src: HEADER_SVG, id: "header" }
-            div { id: "links",
-                a { href: "https://dioxuslabs.com/learn/0.7/", "📚 Learn Dioxus" }
-                a { href: "https://dioxuslabs.com/awesome", "🚀 Awesome Dioxus" }
-                a { href: "https://github.com/dioxus-community/", "📡 Community Libraries" }
-                a { href: "https://github.com/DioxusLabs/sdk", "⚙️ Dioxus Development Kit" }
-                a { href: "https://marketplace.visualstudio.com/items?itemName=DioxusLabs.dioxus", "💫 VSCode Extension" }
-                a { href: "https://discord.gg/XgGxMSkvUM", "👋 Community Discord" }
-            }
-        }
-    }
-}
-
-/// Home page
-#[component]
-fn Home() -> Element {
-    rsx! {
-        Hero {}
-
-    }
-}
-
-/// Blog page
-#[component]
-pub fn Blog(id: i32) -> Element {
-    rsx! {
-        div {
-            id: "blog",
-
-            // Content
-            h1 { "This is blog #{id}!" }
-            p { "In blog #{id}, we show how the Dioxus router works and how URL parameters can be passed as props to our route components." }
-
-            // Navigation links
-            Link {
-                to: Route::Blog { id: id - 1 },
-                "Previous"
-            }
-            span { " <---> " }
-            Link {
-                to: Route::Blog { id: id + 1 },
-                "Next"
-            }
-        }
-    }
-}
-
-/// Shared navbar component.
-#[component]
-fn Navbar() -> Element {
-    rsx! {
-        div {
-            id: "navbar",
-            Link {
-                to: Route::Home {},
-                "Home"
-            }
-            Link {
-                to: Route::Blog { id: 1 },
-                "Blog"
-            }
-        }
-
-        Outlet::<Route> {}
+        p { "{trimmed}" }
+        p { "{settings:?}" }
     }
 }
