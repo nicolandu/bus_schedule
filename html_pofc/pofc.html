@@ -8,18 +8,46 @@
     <!-- Lien vers feuille de style (CSS) personnelle !-->
     <link href="pofc.css" rel="stylesheet" type="text/css" />
     <style>
+        body {
+            background-color: #0A031C;
+            color: whitesmoke;
+            font-size: max(16pt, 0pt);
+            margin: 0;
+            padding: 0;
+        }
+
+        span {
+            display: inline-block;
+        }
+
+        span.il {
+            display: inline;
+        }
+
+        .head {
+            font-size: max(20pt, 0pt);
+            background-color: midnightblue;
+            padding: 0.5em 0;
+            padding-left: max(1.5em, 3em);
+        }
+
         #current-time {
-            text-align: right;
+            float: right;
+            margin-right: 10ch;
         }
 
         .line {
-            display: flex;
-            flex-direction: column;
             height: 1.5em;
+            color: #FFF000;
+            margin-left: 5em;
+            margin-right: 2em;
+            border-top: 0.1ch solid darkolivegreen;
+            border-bottom: 0.1ch solid darkolivegreen;
         }
 
         .lnum {
             width: 3ch;
+            padding: 0 0.5ch;
             text-align: right;
             border: 0 solid;
             border-radius: 0.5em;
@@ -28,23 +56,22 @@
         }
 
         .depar {
-            text-align: right;
+            float: right;
         }
     </style>
 </head>
 
 <body>
-    <div>
+    <div class="head">
         <span>Prochains passages</span>
-        <span id="current-time"></span>
+        <span id="current-time">[time]</span>
     </div>
-    <div style="display: flex;">
+    <br>
+    <div>
         <div class="line" style="order: 0;">
-            <div id="line-num" class="lnum"></div>
-            <div>
-                <span id="direction"></span>
-                <span id="departure" class="depar"></span>
-            </div>
+            <span id="line-num" class="lnum">15</span>
+            <span id="direction">North</span>
+            <span id="departure" class="depar">12min</span>
         </div>
     </div>
 </body>
