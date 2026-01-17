@@ -31,23 +31,23 @@ pub fn UserInterface()->Element {
             div {
                 class:"tableau",
                 label {
-                    for="setting",
-                    
+                    for:"setting",
+                    "Préférences"
                 }
                 //id
                 select {
-                    name="service", id:"setting",
-                    option{value="Exo", "Exo"}
-                    option{value="STM", "STM"}
-                    option{value="Exo", "Exo"}
-                    option{value="Exo", "Exo"}
+                    name:"service", id:"setting",
+                    option{value:"Exo", "Exo"}
+                    option{value:"STM", "STM"}
+                    option{value:"RTM", "RTM"}
+                    option{value:"STL", "STL"}
                     
                     "Nom du service"
                 }
                 //chateau_id onclick:move |_|{id} 
                 // button {onclick:move |_|{}  }
                 //color
-                input{name="setting", }
+                input{ type:"color", name:"setting",}
                 //background_color
                 button {  }
                 //label
