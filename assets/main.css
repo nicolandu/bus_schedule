@@ -31,6 +31,8 @@ body {
     display: flex;
     flex-direction: column;
     height: 1.5em;
+    border-radius: 3px;
+    background-color: rgb(150, 175, 116);
 }
 
 .line-number {
