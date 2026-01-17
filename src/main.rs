@@ -1,14 +1,20 @@
+// http://127.0.0.1:8080/?(title:%22Prochains%20bus%22,max_ahead:14400,lines:[(id:%2251%22,label:Some(%22Est%22),stop_id:%2251167%22,chateau_id:%22soci%C3%A9t%C3%A9~de~transport~de~montr%C3%A9al%22,color:Some(%22%23ffffff%22),background_color:Some(%22%2322bbff%22),priority:0)])
 use std::time::Duration;
 
+use chrono::{DateTime, Local, TimeDelta, Utc};
 use futures::future::join_all;
 
-use dioxus::prelude::*;
+use dioxus::{core::anyhow, document::Link, prelude::*};
 use serde::{Deserialize, Serialize};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const HEADER_SVG: Asset = asset!("/assets/header.svg");
+
 const RELOAD_DURATION: Duration = Duration::from_secs(30);
+const UPDATE_DELTA: Duration = Duration::from_secs(1);
+const MAX_TRIPS_SHOWN: usize = 3;
+const TIME_FORMAT: &str = "%H:%M";
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 enum Route {
@@ -26,16 +32,18 @@ enum TripStatus {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Settings {
     title: String,
-    max_ahead: u64,
+    max_ahead: u32,
     lines: Vec<LineSettings>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 struct LineSettings {
     id: String,
     stop_id: String,
     chateau_id: String,
     color: Option<String>,
+    background_color: Option<String>,
+    label: Option<String>,
     priority: u32,
 }
 
@@ -54,7 +62,7 @@ struct ApiTrip {
     trip_deleted: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 struct LineStatus {
     settings: LineSettings,
     trips: Vec<Trip>,
@@ -88,14 +96,19 @@ impl PartialOrd for Trip {
     }
 }
 
-async fn fetch_stops(lines: &[LineSettings]) -> Result<Vec<LineStatus>, reqwest::Error> {
+async fn fetch_stops(
+    lines: &[LineSettings],
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+) -> Result<Vec<LineStatus>, reqwest::Error> {
     info!("start fetch");
     let futures = lines.iter().map(|line| {
         let line_clone = line.clone();
         async move {
-            let api_data = fetch_stop_status(&line_clone.stop_id, &line_clone.chateau_id)
-                .await
-                .expect("Fetch error");
+            let api_data =
+                fetch_stop_status(&line_clone.stop_id, &line_clone.chateau_id, start, end)
+                    .await
+                    .expect("Fetch error");
 
             let mut trips = api_data
                 .events
@@ -141,8 +154,12 @@ async fn fetch_stops(lines: &[LineSettings]) -> Result<Vec<LineStatus>, reqwest:
 async fn fetch_stop_status(
     stop_id: &str,
     chateau_id: &str,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
 ) -> Result<StopApiStatus, reqwest::Error> {
-    let url = format!("https://birchdeparturesfromstop.catenarymaps.org/departures_at_stop?stop_id={stop_id}&chateau_id={chateau_id}&include_shapes=false");
+    let start = start.timestamp();
+    let end = end.timestamp();
+    let url = format!("https://birchdeparturesfromstop.catenarymaps.org/departures_at_stop?stop_id={stop_id}&chateau_id={chateau_id}&greater_than_time={start}&less_than_time={end}&include_shapes=false");
     reqwest::get(&url).await?.json().await
 }
 
@@ -152,7 +169,10 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-    rsx! { Router::<Route> {} }
+    rsx! {
+        Link { rel: "stylesheet", href: MAIN_CSS }
+        Router::<Route> {}
+    }
 }
 
 #[component]
@@ -160,13 +180,30 @@ fn Schedule(params: String) -> Element {
     let url_decoded = urlencoding::decode(&params)?;
     let settings: Settings = ron::from_str(&url_decoded)?;
 
+    let mut time = use_signal(Utc::now);
+    use_future(move || async move {
+        loop {
+            time.set(Utc::now());
+            async_std::task::sleep(UPDATE_DELTA).await;
+        }
+    })();
+
     let mut results = use_signal(|| None);
     let settings_clone = settings.clone();
     use_future(move || {
-        let value = settings_clone.lines.clone();
+        let lines = settings_clone.lines.clone();
         async move {
             loop {
-                results.set(Some(fetch_stops(&value.clone()).await));
+                let time = *time.read();
+                if let Ok(res) = fetch_stops(
+                    &lines.clone(),
+                    time,
+                    time + TimeDelta::seconds(settings.max_ahead as i64),
+                )
+                .await
+                {
+                    results.set(Some(res));
+                }
                 async_std::task::sleep(RELOAD_DURATION).await;
             }
         }
@@ -178,6 +215,62 @@ fn Schedule(params: String) -> Element {
             span {
                 class: "title",
                 { settings.title }
+            }
+            span {
+                class: "time",
+                { time.read().format(TIME_FORMAT).to_string() }
+            }
+        }
+        if let Some(res) = &*results.read() {
+            div {
+                class: "lines",
+                for line in res {
+                    LineDisplay { line: line.clone(), time }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn LineDisplay(line: LineStatus, time: Signal<DateTime<Utc>>) -> Element {
+    rsx! {
+        div {
+            class: "line",
+            span {
+                class: "line-number",
+                color: line.settings.color,
+                background_color: line.settings.background_color,
+                { line.settings.id }
+            }
+            if let Some(label) = line.settings.label {
+                span {
+                    class: "line-label",
+                    { label }
+                }
+            }
+
+            div {
+                class: "line-departures",
+                for trip in line.trips.iter().take(MAX_TRIPS_SHOWN) {
+                    span {
+                        class: match trip.status {
+                            TripStatus::Cancelled => "trip trip-cancelled",
+                            TripStatus::Realtime(_) => "trip trip-realtime",
+                            TripStatus::NoRealtime => "trip"
+                        },
+                        {
+                            let ts = DateTime::<Utc>::from_timestamp_secs(trip.scheduled).ok_or(anyhow!("Error converting timestamp"))?;
+                            match trip.status {
+                                TripStatus::Cancelled | TripStatus::NoRealtime => ts.with_timezone(&Local).format(TIME_FORMAT).to_string(),
+                                TripStatus::Realtime(t) => format!("{} min",
+                                    (DateTime::<Utc>::from_timestamp_secs(t).ok_or(anyhow!("Error converting realtime timestamp"))?
+                                    -*time.read()).num_minutes()
+                                ),
+                            }
+                        }
+                    }
+                }
             }
         }
     }
