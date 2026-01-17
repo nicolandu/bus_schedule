@@ -1,4 +1,3 @@
-@ -0,0 +1,48 @@
 //Hotreloader la page ou l'api every 30 seconds. Repreprendre le lien de l'api.
 
 use dioxus::prelude::*;
