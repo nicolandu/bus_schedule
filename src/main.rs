@@ -3,7 +3,8 @@ use std::time::Duration;
 use chrono::{DateTime, Local, TimeDelta, Utc};
 use futures::future::join_all;
 
-use dioxus::{core::anyhow, prelude::*};
+
+use dioxus::{core::anyhow, document::Link, prelude::*};
 use serde::{Deserialize, Serialize};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
@@ -168,7 +169,11 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-    rsx! { Router::<Route> {} }
+
+    rsx! {
+        Link { rel: "stylesheet", href: MAIN_CSS }
+        Router::<Route> {}
+    }
 }
 
 #[component]
