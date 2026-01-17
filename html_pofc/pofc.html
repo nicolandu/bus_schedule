@@ -7,18 +7,44 @@
     <title>pofc</title>
     <!-- Lien vers feuille de style (CSS) personnelle !-->
     <link href="pofc.css" rel="stylesheet" type="text/css" />
+    <style>
+        #current-time {
+            text-align: right;
+        }
+
+        .line {
+            display: flex;
+            flex-direction: column;
+            height: 1.5em;
+        }
+
+        .lnum {
+            width: 3ch;
+            text-align: right;
+            border: 0 solid;
+            border-radius: 0.5em;
+            background-color: dodgerblue;
+            color: whitesmoke;
+        }
+
+        .depar {
+            text-align: right;
+        }
+    </style>
 </head>
 
 <body>
     <div>
         <span>Prochains passages</span>
-        <span id="current-time" style="text-align: right;"></span>
+        <span id="current-time"></span>
     </div>
     <div style="display: flex;">
-        <div style="display: flex; order: 0;">
-            <span id="line-num"></span>
-            <span id="direction"></span>
-            <span id="departure" style="text-align: right;"></span>
+        <div class="line" style="order: 0;">
+            <div id="line-num" class="lnum"></div>
+            <div>
+                <span id="direction"></span>
+                <span id="departure" class="depar"></span>
+            </div>
         </div>
     </div>
 </body>
