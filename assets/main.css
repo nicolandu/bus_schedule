@@ -33,6 +33,7 @@ body {
     height: 1.5em;
     border-radius: 3px;
     background-color: rgb(150, 175, 116);
+    margin-top: 3px;
 }
 
 .line-number {
