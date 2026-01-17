@@ -1,18 +1,150 @@
-use dioxus::prelude::*;
+use std::time::Duration;
 
-#[derive(Debug, Clone, Routable, PartialEq)]
-#[rustfmt::skip]
-enum Route {
-    #[layout(Navbar)]
-    #[route("/")]
-    Home {},
-    #[route("/blog/:id")]
-    Blog { id: i32 },
-}
+use futures::future::join_all;
+
+use dioxus::prelude::*;
+use serde::{Deserialize, Serialize};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const HEADER_SVG: Asset = asset!("/assets/header.svg");
+const RELOAD_DURATION: Duration = Duration::from_secs(30);
+
+#[derive(Debug, Clone, Routable, PartialEq)]
+enum Route {
+    #[route("/?:..params")]
+    Schedule { params: String },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+enum TripStatus {
+    Cancelled,
+    NoRealtime,
+    Realtime(i64),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Settings {
+    title: String,
+    max_ahead: u64,
+    lines: Vec<LineSettings>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct LineSettings {
+    id: String,
+    stop_id: String,
+    chateau_id: String,
+    color: Option<String>,
+    priority: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct StopApiStatus {
+    events: Vec<ApiTrip>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct ApiTrip {
+    route_id: String,
+    scheduled_departure: i64,
+    realtime_departure: Option<i64>,
+    stop_cancelled: bool,
+    trip_cancelled: bool,
+    trip_deleted: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct LineStatus {
+    settings: LineSettings,
+    trips: Vec<Trip>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+struct Trip {
+    scheduled: i64,
+    status: TripStatus,
+}
+
+impl Ord for Trip {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let time_a = if let TripStatus::Realtime(t) = self.status {
+            t
+        } else {
+            self.scheduled
+        };
+        let time_b = if let TripStatus::Realtime(t) = other.status {
+            t
+        } else {
+            other.scheduled
+        };
+        time_a.cmp(&time_b)
+    }
+}
+
+impl PartialOrd for Trip {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+async fn fetch_stops(lines: &[LineSettings]) -> Result<Vec<LineStatus>, reqwest::Error> {
+    info!("start fetch");
+    let futures = lines.iter().map(|line| {
+        let line_clone = line.clone();
+        async move {
+            let api_data = fetch_stop_status(&line_clone.stop_id, &line_clone.chateau_id)
+                .await
+                .expect("Fetch error");
+
+            let mut trips = api_data
+                .events
+                .iter()
+                .filter(|event| event.route_id == line_clone.id)
+                .map(|event| {
+                    let cancelled =
+                        event.stop_cancelled || event.trip_cancelled || event.trip_deleted;
+                    Trip {
+                        scheduled: event.scheduled_departure,
+                        status: if cancelled {
+                            TripStatus::Cancelled
+                        } else if let Some(t) = event.realtime_departure {
+                            TripStatus::Realtime(t)
+                        } else {
+                            TripStatus::NoRealtime
+                        },
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            trips.sort();
+            LineStatus {
+                settings: line_clone,
+                trips,
+            }
+        }
+    });
+    let mut ret = join_all(futures)
+        .await
+        .into_iter()
+        .filter(|status| !status.trips.is_empty())
+        .collect::<Vec<_>>();
+    ret.sort_by(|a, b| {
+        a.settings
+            .priority
+            .cmp(&b.settings.priority)
+            .then(a.trips[0].cmp(&b.trips[1]))
+    });
+    Ok(ret)
+}
+
+async fn fetch_stop_status(
+    stop_id: &str,
+    chateau_id: &str,
+) -> Result<StopApiStatus, reqwest::Error> {
+    let url = format!("https://birchdeparturesfromstop.catenarymaps.org/departures_at_stop?stop_id={stop_id}&chateau_id={chateau_id}&include_shapes=false");
+    reqwest::get(&url).await?.json().await
+}
 
 fn main() {
     dioxus::launch(App);
@@ -20,81 +152,33 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-    rsx! {
-        document::Link { rel: "icon", href: FAVICON }
-        document::Link { rel: "stylesheet", href: MAIN_CSS }
-        Router::<Route> {}
-    }
+    rsx! { Router::<Route> {} }
 }
 
 #[component]
-pub fn Hero() -> Element {
-    rsx! {
-        div {
-            id: "hero",
-            img { src: HEADER_SVG, id: "header" }
-            div { id: "links",
-                a { href: "https://dioxuslabs.com/learn/0.7/", "📚 Learn Dioxus" }
-                a { href: "https://dioxuslabs.com/awesome", "🚀 Awesome Dioxus" }
-                a { href: "https://github.com/dioxus-community/", "📡 Community Libraries" }
-                a { href: "https://github.com/DioxusLabs/sdk", "⚙️ Dioxus Development Kit" }
-                a { href: "https://marketplace.visualstudio.com/items?itemName=DioxusLabs.dioxus", "💫 VSCode Extension" }
-                a { href: "https://discord.gg/XgGxMSkvUM", "👋 Community Discord" }
+fn Schedule(params: String) -> Element {
+    let url_decoded = urlencoding::decode(&params)?;
+    let settings: Settings = ron::from_str(&url_decoded)?;
+
+    let mut results = use_signal(|| None);
+    let settings_clone = settings.clone();
+    use_future(move || {
+        let value = settings_clone.lines.clone();
+        async move {
+            loop {
+                results.set(Some(fetch_stops(&value.clone()).await));
+                async_std::task::sleep(RELOAD_DURATION).await;
             }
         }
-    }
-}
+    })();
 
-/// Home page
-#[component]
-fn Home() -> Element {
-    rsx! {
-        Hero {}
-
-    }
-}
-
-/// Blog page
-#[component]
-pub fn Blog(id: i32) -> Element {
     rsx! {
         div {
-            id: "blog",
-
-            // Content
-            h1 { "This is blog #{id}!" }
-            p { "In blog #{id}, we show how the Dioxus router works and how URL parameters can be passed as props to our route components." }
-
-            // Navigation links
-            Link {
-                to: Route::Blog { id: id - 1 },
-                "Previous"
-            }
-            span { " <---> " }
-            Link {
-                to: Route::Blog { id: id + 1 },
-                "Next"
+            class: "header",
+            span {
+                class: "title",
+                { settings.title }
             }
         }
-    }
-}
-
-/// Shared navbar component.
-#[component]
-fn Navbar() -> Element {
-    rsx! {
-        div {
-            id: "navbar",
-            Link {
-                to: Route::Home {},
-                "Home"
-            }
-            Link {
-                to: Route::Blog { id: 1 },
-                "Blog"
-            }
-        }
-
-        Outlet::<Route> {}
     }
 }
