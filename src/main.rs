@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use chrono::Local;
 use futures::future::join_all;
 
 use dioxus::prelude::*;
@@ -8,7 +9,10 @@ use serde::{Deserialize, Serialize};
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const HEADER_SVG: Asset = asset!("/assets/header.svg");
+
 const RELOAD_DURATION: Duration = Duration::from_secs(30);
+const UPDATE_DELTA: Duration = Duration::from_secs(1);
+const MAX_TRIPS_SHOWN: usize = 3;
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 enum Route {
@@ -30,7 +34,7 @@ struct Settings {
     lines: Vec<LineSettings>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 struct LineSettings {
     id: String,
     stop_id: String,
@@ -54,7 +58,7 @@ struct ApiTrip {
     trip_deleted: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 struct LineStatus {
     settings: LineSettings,
     trips: Vec<Trip>,
@@ -166,9 +170,19 @@ fn Schedule(params: String) -> Element {
         let value = settings_clone.lines.clone();
         async move {
             loop {
-                results.set(Some(fetch_stops(&value.clone()).await));
+                if let Ok(res) = fetch_stops(&value.clone()).await {
+                    results.set(Some(res));
+                }
                 async_std::task::sleep(RELOAD_DURATION).await;
             }
+        }
+    })();
+
+    let mut time = use_signal(|| Local::now());
+    use_future(move || async move {
+        loop {
+            time.set(Local::now());
+            async_std::task::sleep(UPDATE_DELTA).await;
         }
     })();
 
@@ -178,6 +192,45 @@ fn Schedule(params: String) -> Element {
             span {
                 class: "title",
                 { settings.title }
+            }
+            span {
+                class: "time",
+                { time.read().format("%H:%M").to_string() }
+            }
+        }
+        if let Some(res) = &*results.read() {
+            div {
+                class: "lines",
+                for line in res {
+                    LineDisplay { line: line.clone() }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn LineDisplay(line: LineStatus) -> Element {
+    rsx! {
+        div {
+            class: "line",
+            span {
+                class: "line-number",
+                { line.settings.id }
+            }
+
+            div {
+                class: "line-departures",
+                for trip in line.trips.iter().take(MAX_TRIPS_SHOWN) {
+                    span {
+                        class: match trip.status {
+                            TripStatus::Cancelled => "trip trip-cancelled",
+                            TripStatus::Realtime(_) => "trip trip-realtime",
+                            TripStatus::NoRealtime => "trip"
+                        },
+                        { format!("{}", trip.scheduled) }
+                    }
+                }
             }
         }
     }
