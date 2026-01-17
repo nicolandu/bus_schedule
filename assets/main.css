@@ -70,3 +70,14 @@ body {
     margin-top: 50px;
 }
 
+.trip-cancelled{
+    text-decoration: underline;
+}
+
+.trip-realtime{
+
+}
+
+.trip{
+    width: 10%;
+}
