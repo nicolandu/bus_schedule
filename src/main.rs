@@ -304,7 +304,7 @@ fn LineDisplay(line: LineStatus, time: Signal<DateTime<Utc>>) -> Element {
 
                                         {format!("{} min",
                                         (DateTime::<Utc>::from_timestamp_secs(t).ok_or(anyhow!("Error converting realtime timestamp"))?
-                                        -*time.read()).num_minutes())}
+                                        -*time.read()).num_minutes().max(0))}
 
                                         object {
                                             type: "image/svg+xml",
