@@ -1,4 +1,3 @@
-// http://127.0.0.1:8080/?(title:%22Prochains%20bus%22,max_ahead:14400,lines:[(id:%2251%22,label:Some(%22Est%22),stop_id:%2251167%22,chateau_id:%22soci%C3%A9t%C3%A9~de~transport~de~montr%C3%A9al%22,color:Some(%22%23ffffff%22),background_color:Some(%22%2322bbff%22),priority:0)])
 use std::time::Duration;
 
 use chrono::{DateTime, Local, TimeDelta, Utc};
@@ -146,7 +145,7 @@ async fn fetch_stops(
         a.settings
             .priority
             .cmp(&b.settings.priority)
-            .then(a.trips[0].cmp(&b.trips[1]))
+            .then(a.trips[0].cmp(&b.trips[0]))
     });
     Ok(ret)
 }
