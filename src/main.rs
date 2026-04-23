@@ -7,6 +7,7 @@ use dioxus::{core::anyhow, document::Link, prelude::*};
 use serde::{Deserialize, Serialize};
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");
+const FAVICON_SVG: Asset = asset!("/assets/favicon.svg");
 const LIVE_SVG: Asset = asset!("/assets/live.svg");
 
 const RELOAD_DURATION: Duration = Duration::from_secs(30);
@@ -30,6 +31,7 @@ enum TripStatus {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Settings {
     title: String,
+    subtitle: Option<String>,
     max_ahead: u32,
     lines: Vec<LineSettings>,
 }
@@ -37,6 +39,7 @@ struct Settings {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 struct LineSettings {
     id: String,
+    display_id: Option<String>,
     stop_id: String,
     chateau_id: String,
     color: Option<String>,
@@ -170,6 +173,7 @@ fn main() {
 fn App() -> Element {
     rsx! {
         Link { rel: "stylesheet", href: MAIN_CSS }
+        Link { rel: "icon", href: FAVICON_SVG, type: "image/svg+xml" }
         Router::<Route> {}
     }
 }
@@ -209,11 +213,26 @@ fn Schedule(params: String) -> Element {
     })();
 
     rsx! {
+        Title { "{settings.title}" }
         div {
             class: "header",
-            div {
-                class: "title",
-                { settings.title }
+            if let Some(subtitle) = settings.subtitle {
+                div {
+                    class: "title-group",
+                    div {
+                        class: "title",
+                        { settings.title }
+                    }
+                    div {
+                        class: "subtitle",
+                        { subtitle }
+                    }
+                }
+            } else {
+                div {
+                    class: "title",
+                    { settings.title }
+                }
             }
             div {
                 class: "time",
@@ -247,7 +266,11 @@ fn LineDisplay(line: LineStatus, time: Signal<DateTime<Utc>>) -> Element {
                     } else {
                         line.settings.background_color.clone()
                     },
-                    { line.settings.id }
+                    if let Some(id) = line.settings.display_id {
+                        { id }
+                    } else {
+                        { line.settings.id }
+                    }
                 }
                 if let Some(label) = line.settings.label {
                     div {
@@ -278,9 +301,11 @@ fn LineDisplay(line: LineStatus, time: Signal<DateTime<Utc>>) -> Element {
                                 TripStatus::Realtime(t) => rsx!{
                                     div {
                                         class: "trip-content",
-                                            {format!("{} min",
-                                            (DateTime::<Utc>::from_timestamp_secs(t).ok_or(anyhow!("Error converting realtime timestamp"))?
-                                            -*time.read()).num_minutes())}
+
+                                        {format!("{} min",
+                                        (DateTime::<Utc>::from_timestamp_secs(t).ok_or(anyhow!("Error converting realtime timestamp"))?
+                                        -*time.read()).num_minutes())}
+
                                         object {
                                             type: "image/svg+xml",
                                             data: LIVE_SVG,

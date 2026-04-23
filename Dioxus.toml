@@ -3,7 +3,7 @@
 [web.app]
 
 # HTML title tag content
-title = "bus_schedule"
+title = "Bus Schedule"
 
 # include `assets` in web platform
 [web.resource]
